@@ -1,16 +1,16 @@
 #include <jailhouse/types.h>
 #include <jailhouse/cell-config.h>
 
-#define __ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+
 #define MBYTE(m) ((m)<<20)
 
-#define GUEST_MEM_START 0x7a800000
+#define GUEST_MEM_START 0x20000000
 #define GUEST_MEM_SIZE MBYTE(16)
 
 struct {
 	struct jailhouse_cell_desc cell;
 	__u64 cpus[1];
-	struct jailhouse_memory mem_regions[8];
+	struct jailhouse_memory mem_regions[7];
 	struct jailhouse_irqchip irqchips[1];
 	struct jailhouse_pci_device pci_devices[1];
 } __attribute__((packed)) config = {
@@ -18,36 +18,61 @@ struct {
 		.signature = JAILHOUSE_CELL_DESC_SIGNATURE,
 		.revision = JAILHOUSE_CONFIG_REVISION,
 		.name = "FreeRTOS",
-		.flags = JAILHOUSE_CELL_PASSIVE_COMMREG,
+		.flags = JAILHOUSE_CELL_PASSIVE_COMMREG | JAILHOUSE_CELL_AARCH32 ,
 
 		.cpu_set_size = sizeof(config.cpus),
-		.num_memory_regions = __ARRAY_SIZE(config.mem_regions),
-		.num_irqchips = __ARRAY_SIZE(config.irqchips),
-		.num_pci_devices = __ARRAY_SIZE(config.pci_devices),
+		.num_memory_regions = ARRAY_SIZE(config.mem_regions),
+		.num_irqchips = ARRAY_SIZE(config.irqchips),
+		.num_pci_devices = ARRAY_SIZE(config.pci_devices),
 
-		.vpci_irq_base = 123,
+		.vpci_irq_base = 186-32,
+
+		.console = {
+			.address = 0xfe215040,
+			.type = JAILHOUSE_CON_TYPE_8250,
+			.flags = JAILHOUSE_CON_ACCESS_MMIO |
+				 JAILHOUSE_CON_REGDIST_4,
+		},
 	},
 
 	.cpus = {
-		0x2,
+		0b0100,
 	},
 
 	.mem_regions = {
 		/* IVSHMEM shared memory regions (demo) */
 		{
-			.phys_start = 0x7bf00000,
-			.virt_start = 0x7bf00000,
+			.phys_start = 0x1faf0000,
+			.virt_start = 0x1faf0000,
 			.size = 0x1000,
 			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_ROOTSHARED,
 		},
 		{
-			.phys_start = 0x7bf00000 + 0x1000,
-			.virt_start = 0x7bf00000 + 0x1000,
-			.size = 0x1000,
-			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE | JAILHOUSE_MEM_ROOTSHARED,
+			.phys_start = 0x1faf1000,
+			.virt_start = 0x1faf1000,
+			.size = 0x9000,
+			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+				JAILHOUSE_MEM_ROOTSHARED,
 		},
-		{ 0 },
-		{ 0 },
+		{
+			.phys_start = 0x1fafa000,
+			.virt_start = 0x1fafa000,
+			.size = 0x2000,
+			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_ROOTSHARED,
+		},
+		{
+			.phys_start = 0x1fafc000,
+			.virt_start = 0x1fafc000,
+			.size = 0x2000,
+			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+				JAILHOUSE_MEM_ROOTSHARED,
+		},
+		{
+			.phys_start = 0x1fafe000,
+			.virt_start = 0x1fafe000,
+			.size = 0x2000,
+			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_ROOTSHARED,
+		},
 		/* RAM */ {
 			.phys_start = GUEST_MEM_START,
 			.virt_start = 0,
@@ -55,14 +80,15 @@ struct {
 			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
 				JAILHOUSE_MEM_EXECUTE | JAILHOUSE_MEM_LOADABLE,
 		},
-		/* UART 4-7 */ {
-			.phys_start = 0x01c29000,
-			.virt_start = 0x01c29000,
-			.size = 0x1000,
+		/* UART 1 */ {
+			.phys_start = 0xfe215040,
+			.virt_start = 0xfe215040,
+			.size = 0x40,
 			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
-				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_32,
+				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_8 | JAILHOUSE_MEM_IO_32 |
+				 JAILHOUSE_MEM_ROOTSHARED,
 		},
-		/* CCU (Hack) */ {
+		/* CCU (Hack)  {
 			.phys_start = 0x01c2006c,
 			.virt_start = 0x01c2006c,
 			.size = 0x4,
@@ -70,32 +96,36 @@ struct {
 				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_32 | JAILHOUSE_MEM_ROOTSHARED,
 		},
 #define PIO_P7_REG (0x01c20800 + 7*0x24 + 0x0c)
-		/* PIO port 7: blinking LED */ {
+		 PIO port 7: blinking LED  {
 			.phys_start = PIO_P7_REG,
 			.virt_start = PIO_P7_REG,
 			.size = 0x8,
 			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
 				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_32,
-		},
+		},*/
 	},
 	.irqchips = {
 		/* GIC */ {
-			.address = 0x01c81000,
-			.pin_base = 32,
-			/* Interrupt of UART 7 belongs to the client */
+			.address = 0xff841000,
+			.pin_base = 160,
+			/* Interrupt for Shared Memory */
 			.pin_bitmap = {
-				1<<(52-32), 0, 0, 1 << (123+32-128),
+				 1<<(186-160),
+				 0,
+				 0,
+				 0
 			},
 		},
 	},
 	.pci_devices = {
 		{
 			.type = JAILHOUSE_PCI_TYPE_IVSHMEM,
+			.domain= 1,
 			.bdf = 0 << 3,
 			.bar_mask = JAILHOUSE_IVSHMEM_BAR_MASK_INTX,
 			.shmem_regions_start = 0,
-			.shmem_dev_id = 1,
-			.shmem_peers = 2,
+			.shmem_dev_id = 3,
+			.shmem_peers = 3,
 			.shmem_protocol = JAILHOUSE_SHMEM_PROTO_UNDEFINED,
 		},
 	},
