@@ -85,7 +85,8 @@
 #define AUX_IRQ 		0x00 //Interrupt Controll
 #define AUX_ENABLES		0x04 //UART,SPI activate
 #define AUX_MU_IO_REG		0x40 //FIFO read and write
-#define AUX_MU_IIR_REG		0x48 //Interrupt Register
+#define AUX_MU_IER_REG		0x44 //Interrupt Register
+#define AUX_MU_IIR_REG		0x48 //Interrupt Register show
 #define AUX_MU_LCR_REG		0x4c //Controll Register
 #define AUX_MU_MCR_REG		0x50 //ignor
 #define AUX_MU_LSR_REG		0x54 //Data Status 
@@ -128,7 +129,7 @@ sio_fd_t mini_uart_open(void)
   //mmio_write32(UART_CLOCK_REG, mmio_read32(UART_CLOCK_REG) | (1 << UART_GATE_NR));
 
 	mmio_write32(uart_base + AUX_IRQ , 0 );/* IRQ off */
-	mmio_write32(uart_base + AUX_ENABLE, 1); /* Mini UART activate */
+	mmio_write32(uart_base + AUX_ENABLES, 1); /* Mini UART activate */
 	mmio_write32(uart_base + AUX_MU_IER_REG , 0); /* IER off */
 	mmio_write32(uart_base + AUX_MU_IIR_REG , 6); /* clear FIFO */
 	mmio_write32(uart_base + AUX_MU_LCR_REG , 1); /* set Data size 8-bit mode*/
@@ -144,14 +145,14 @@ void mini_uart_irq_rx_enable(void)
 {
  sio_fd_t uart_base = (void*)UART_BASE;
  mmio_write32(uart_base+ AUX_IRQ , 1); /*IRQ on*/
- mmio_write32(uart_base+ AUX_IER_REG , 2) /*receive Interrupt*/
+ mmio_write32(uart_base+ AUX_MU_IER_REG , 2); /*receive Interrupt*/
   
 }
 
 static int serial_ready(void) 
 {
-  
-   return  ((*UART_BASE + AUX_MU_LSR_REG) & 0x00000010);
+   sio_fd_t uart_base = (void*)UART_BASE;
+   return  (mmio_read32(uart_base + AUX_MU_LSR_REG) & 0x00000010);
 }
 
 void mini_uart_putchar(uint32_t c)
@@ -163,9 +164,9 @@ void mini_uart_putchar(uint32_t c)
 }
 
 int mini_uart_getchar(void){
-
- if((*(UART_BASE + AUX_MU_STAT_REG))& 0x000F000 ){  /*Receive FIFO fill Bit 19-16*/
-  return mmio_read32(*UART_BASE + AUX_MU_IO_REG);
+ sio_fd_t uart_base = (void*)UART_BASE;
+ if(mmio_read32(uart_base  + AUX_MU_STAT_REG)& 0x000F000 ){  /*Receive FIFO fill Bit 19-16*/
+  return mmio_read32((void *)UART_BASE + AUX_MU_IO_REG);
  }else{
   return -1;
  }
@@ -195,5 +196,5 @@ int mini_uart_irq_getchar(void)
       printf("UNHANDLED: %x\n\r", iir_val);
       break;
   }*/
-  return mmio_read32(*uart_rbr);
+  return *uart_rbr;
 }

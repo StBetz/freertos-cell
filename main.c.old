@@ -322,7 +322,7 @@ void vApplicationIRQHandler(unsigned int irqn)
       //timer_off();
       FreeRTOS_Tick_Handler();
       break;
-    case UART_IRQ:
+    case UART7_IRQ:
       handle_uart_irq();
       break;
     case 0x3ff:
@@ -581,7 +581,7 @@ static void prvSetupHardware(void)
   /* Replace the exception vector table by a FreeRTOS variant */
   vPortInstallFreeRTOSVectorTable();
   hardware_fpu_enable();
-  irq_enable(UART_IRQ);
+  irq_enable(UART7_IRQ);
   serial_irq_rx_enable(ser_dev);
   arm_read_sysreg(CNTFRQ, timer_frq);
   if(!timer_frq) {

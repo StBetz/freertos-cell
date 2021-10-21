@@ -78,9 +78,10 @@
 
 typedef void * sio_fd_t;
 
-sio_fd_t serial_open(void);
-void serial_irq_rx_enable();
-void serial_putchar(sio_fd_t fd, uint32_t c);
-void serial_printf(sio_fd_t fd, const char *ctrl1, ...);
-int serial_irq_getchar(sio_fd_t fd);
+sio_fd_t mini_uart_open(void);
+void mini_uart_irq_rx_enable(void);
+void mini_uart_putchar( uint32_t c);
+void mini_uart_printf( const char *ctrl1, ...);
+int  mini_uart_getchar(void);
+int  mini_uart_irq_getchar(void);
 #endif
