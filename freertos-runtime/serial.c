@@ -1,3 +1,4 @@
+
 /* {{{1 License
     FreeRTOS V8.2.0 - Copyright (C) 2015 Real Time Engineers Ltd.
     All rights reserved
@@ -77,27 +78,24 @@
 #include <string.h>
 #include "serial.h"
 
-#ifndef CONFIG_MACH_SUN7I
-#error Only support for Banana Pi board at the moment
-#endif
+ 
+#define UART_BASE 	0xFE215000
+#define IRQ_BASE 	0xFF841000
 
-#define UART7_BASE 0x01C29C00
-#define UART_CLOCK_REG	((void *)0x01c2006c)
-#define UART_GATE_NR	23
+#define AUX_IRQ 		0x00 //Interrupt Controll
+#define AUX_ENABLES		0x04 //UART,SPI activate
+#define AUX_MU_IO_REG		0x40 //FIFO read and write
+#define AUX_MU_IIR_REG		0x48 //Interrupt Register
+#define AUX_MU_LCR_REG		0x4c //Controll Register
+#define AUX_MU_MCR_REG		0x50 //ignor
+#define AUX_MU_LSR_REG		0x54 //Data Status 
+#define AUX_MU_MSR_REG		0x58 //Pin high ir low
+#define AUX_MU_SCRATCH		0x5c //temp Storage
+#define AUX_MU_CNTL_REG		0x60 //Features
+#define AUX_MU_STAT_REG		0x64 //Information
+#define AUX_MU_BAUD_REG		0x68 //Baudrate
 
-#define UART_TX			0x0
-#define UART_DLL		0x0
-#define UART_DLM		0x4
-#define UART_IER		UART_DLM
-#define UART_FCR		0x8
-#define UART_LCR		0xc
-#define UART_MCR		0x10
-#define  UART_LCR_8N1		0x03
-#define  UART_LCR_DLAB		0x80
-#define UART_LSR		0x14
-#define  UART_LSR_THRE		0x20
-
-#define UART_CLK   (24*1000*1000)
+#define UART_CLK   (500*1000*1000) //system_clock_freq
 #define UART_BAUDRATE  115200
 
 /* Code is from linux kernel: drivers/tty/serial/8250/8250_early.c */
@@ -109,7 +107,7 @@
    ((typeof(divisor))-1) > 0 || (__x) > 0) ?  \
     (((__x) + ((__d) / 2)) / (__d)) : \
     (((__x) - ((__d) / 2)) / (__d));  \
-}             \
+}            \
 )
 
 static uint32_t mmio_read32(void *addr)
@@ -122,73 +120,80 @@ static void mmio_write32(void *addr, uint32_t val)
   *((volatile uint32_t*)addr) = val;
 }
 
-sio_fd_t serial_open(void)
+sio_fd_t mini_uart_open(void)
 {
-	unsigned divisor = DIV_ROUND_CLOSEST(UART_CLK, 16 * UART_BAUDRATE);
-  sio_fd_t uart_base = (void*)UART7_BASE;
+	unsigned divisor = DIV_ROUND_CLOSEST(UART_CLK, 8 * UART_BAUDRATE);
+  sio_fd_t uart_base = (void*)UART_BASE;
 
-  mmio_write32(UART_CLOCK_REG,
-      mmio_read32(UART_CLOCK_REG) |
-      (1 << UART_GATE_NR));
+  //mmio_write32(UART_CLOCK_REG, mmio_read32(UART_CLOCK_REG) | (1 << UART_GATE_NR));
 
-	mmio_write32(uart_base + UART_LCR, UART_LCR_8N1);
-	mmio_write32(uart_base + UART_IER, 0); /* IRQ off */
-	mmio_write32(uart_base + UART_FCR, 7); /* FIFO reset and enable */
-	mmio_write32(uart_base + UART_MCR, 7); /* DTR + RTS on */
-	/* Set Divisor Latch Access Bit */
-	mmio_write32(uart_base + UART_LCR, UART_LCR_DLAB | mmio_read32(uart_base + UART_LCR));
+	mmio_write32(uart_base + AUX_IRQ , 0 );/* IRQ off */
+	mmio_write32(uart_base + AUX_ENABLE, 1); /* Mini UART activate */
+	mmio_write32(uart_base + AUX_MU_IER_REG , 0); /* IER off */
+	mmio_write32(uart_base + AUX_MU_IIR_REG , 6); /* clear FIFO */
+	mmio_write32(uart_base + AUX_MU_LCR_REG , 1); /* set Data size 8-bit mode*/
+	mmio_write32(uart_base + AUX_MU_CNTL_REG , 47);/*Auto* flow controll*/
+
+	
 	/* Program baudrate */
-	mmio_write32(uart_base + UART_DLL, 0xff & divisor); /* Divisor Latch Low Register */
-	mmio_write32(uart_base + UART_DLM, 0xff & (divisor >> 8)); /* Divisor Latch High Register */
-	mmio_write32(uart_base + UART_LCR, ~UART_LCR_DLAB & mmio_read32(uart_base + UART_LCR));
+	mmio_write32(uart_base + AUX_MU_BAUD_REG, divisor); 	
   return uart_base;
 }
 
-void serial_irq_rx_enable(sio_fd_t fd)
+void mini_uart_irq_rx_enable(void)
 {
-  void *uart_ier = fd + UART_IER;
-  mmio_write32(uart_ier, 5 | mmio_read32(uart_ier)); /* ERBFI + ELSI */
+ sio_fd_t uart_base = (void*)UART_BASE;
+ mmio_write32(uart_base+ AUX_IRQ , 1); /*IRQ on*/
+ mmio_write32(uart_base+ AUX_IER_REG , 2) /*receive Interrupt*/
+  
 }
 
-static int serial_ready(sio_fd_t fd)
+static int serial_ready(void) 
 {
-  uint32_t *uart_lsr = fd + UART_LSR;
-  return UART_LSR_THRE & mmio_read32(uart_lsr); /* Transmit hold register empty */
+  
+   return  ((*UART_BASE + AUX_MU_LSR_REG) & 0x00000010);
 }
 
-void serial_putchar(sio_fd_t fd, uint32_t c)
+void mini_uart_putchar(uint32_t c)
 {
-  uint32_t *uart_tx = fd + UART_TX;
-  while(!serial_ready(fd))
+  uint32_t *uart_tx = (void *)(UART_BASE + AUX_MU_IO_REG);
+  while(!serial_ready())
     ; /* Wait for empty transmit */
   mmio_write32(uart_tx, c);
 }
 
-int serial_irq_getchar(sio_fd_t fd)
+int mini_uart_getchar(void){
+
+ if((*(UART_BASE + AUX_MU_STAT_REG))& 0x000F000 ){  /*Receive FIFO fill Bit 19-16*/
+  return mmio_read32(*UART_BASE + AUX_MU_IO_REG);
+ }else{
+  return -1;
+ }
+}
+
+int mini_uart_irq_getchar(void)
 {
-  int r = 0;
-  volatile uint32_t *uart_rbr = fd + 0x0; /* Receive buffer register */
-  volatile uint32_t *uart_iir = fd + 0x8; /* INTERRUPT IDENTITY REGISTER */
-  volatile uint32_t *uart_lsr = fd + 0x14;/* Line status register */
-  volatile uint32_t *uart_usr = fd + 0x7C;/* UART status register */
-  unsigned iir_val;
-  iir_val = 0xf & *uart_iir;
-  switch(iir_val) {
-    case 0x7: /* Busy detect indication */
+  
+  volatile uint32_t *uart_rbr = (void *)( UART_BASE + AUX_MU_IO_REG ); /* Receive buffer register */
+  volatile uint32_t *uart_lsr = (void *)( UART_BASE + AUX_MU_LSR_REG );/* DATA status */
+  volatile uint32_t *uart_usr = (void *)( UART_BASE + AUX_MU_STAT_REG );/* UART status register */
+  
+ /* switch(iir_val) {
+    case 0x7:  Busy detect indication 
       printf("USR=%x\n\r", *uart_usr);
       break;
-    case 0x6: /* Receiver line status */
+    case 0x6:  Receiver line status 
       printf("LSR=%x\n\r", *uart_lsr);
       break;
-    case 0x4: /* Received data available */
-    case 12:  /* Character timeout indication */
+    case 0x4:  Received data available 
+    case 12:   Character timeout indication 
       r = *uart_rbr;
       break;
-    case 1: /* None */
+    case 1:  None 
       break;
     default:
       printf("UNHANDLED: %x\n\r", iir_val);
       break;
-  }
-  return r;
+  }*/
+  return mmio_read32(*uart_rbr);
 }
