@@ -155,7 +155,7 @@ static int serial_ready(void)
    return  (mmio_read32(uart_base + AUX_MU_LSR_REG) & 0x00000010);
 }
 
-void mini_uart_putchar(uint32_t c)
+void mini_uart_putchar(char c)
 {
   uint32_t *uart_tx = (void *)(UART_BASE + AUX_MU_IO_REG);
   while(!serial_ready())

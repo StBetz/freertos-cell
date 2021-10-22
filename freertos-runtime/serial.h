@@ -80,7 +80,7 @@ typedef void * sio_fd_t;
 
 sio_fd_t mini_uart_open(void);
 void mini_uart_irq_rx_enable(void);
-void mini_uart_putchar( uint32_t c);
+void mini_uart_putchar(char c);
 void mini_uart_printf( const char *ctrl1, ...);
 int  mini_uart_getchar(void);
 int  mini_uart_irq_getchar(void);
