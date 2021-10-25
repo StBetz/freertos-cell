@@ -11,7 +11,7 @@ OBJCOPY = $(CROSS_COMPILE)objcopy
 
 CFLAGS += -mcpu=cortex-a7 -mtune=cortex-a7 -mfpu=vfpv4-d16 -mfloat-abi=hard -O2
 CFLAGS += -DCONFIG_MACH_SUN7I=1
-CFLAGS += -Wall -MMD -pipe
+CFLAGS += -Wall -MMD -pipe -fno-stack-protector -D_FORTIFY_SOURCE=0
 CFLAGS += -I $(src) -I $(src)/freertos/Source/include -I $(src)/freertos-runtime -I $(src)/freertos/Source/portable/GCC/ARM_A7jailhouse
 
 LDFLAGS += -T lscript.lds
@@ -40,6 +40,9 @@ OBJS = main.o boot_stub.o
 RUNTIME_AR = libfreertos.a
 
 all: $(EXE_STEM).bin
+
+.S.o:
+	$(CC) $(CFLAGS) $< -c -o $@
 
 DEPS := $(OBJS:.o=.d) $(RUNTIME_OBJS:.o=.d)
 
