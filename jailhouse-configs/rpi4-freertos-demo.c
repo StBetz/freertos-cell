@@ -11,7 +11,7 @@ struct {
 	struct jailhouse_cell_desc cell;
 	__u64 cpus[1];
 	struct jailhouse_memory mem_regions[7];
-	struct jailhouse_irqchip irqchips[1];
+	struct jailhouse_irqchip irqchips[2];
 	struct jailhouse_pci_device pci_devices[1];
 } __attribute__((packed)) config = {
 	.cell = {
@@ -105,6 +105,17 @@ struct {
 		},*/
 	},
 	.irqchips = {
+		/* GIC */ {
+			.address = 0xff841000,
+			.pin_base = 32,
+			/* AUX Interrupt for mini UART*/
+			.pin_bitmap = {
+				0,
+				0,
+				1 << (125 - 96),
+				0,
+			},
+		},
 		/* GIC */ {
 			.address = 0xff841000,
 			.pin_base = 160,
