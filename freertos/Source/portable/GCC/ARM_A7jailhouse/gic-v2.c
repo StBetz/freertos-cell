@@ -90,10 +90,11 @@ static void *gicc_base, *gicd_base;
 static void* get_gic_baseaddr(void)
 {
   unsigned val;
-  asm volatile("mrc p15, 4, %0, c15, c0, 0;"
-      : "=r" (val)
-      );
+  //asm volatile("mrc p15, 4, %0, c15, c0, 0;"
+  //    : "=r" (val)
+  //    );
   /* FIXME Here we handle only 32 bit addresses. But there are 40 bit addresses with lpae */
+  val=0xff840000;
   val >>= 15;
   val <<= 15;
   return (void*)val;

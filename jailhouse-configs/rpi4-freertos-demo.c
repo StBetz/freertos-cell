@@ -5,20 +5,21 @@
 #define MBYTE(m) ((m)<<20)
 
 #define GUEST_MEM_START 0x20000000
-#define GUEST_MEM_SIZE MBYTE(16)
+#define GUEST_MEM_SIZE MBYTE(150)
 
 struct {
 	struct jailhouse_cell_desc cell;
 	__u64 cpus[1];
 	struct jailhouse_memory mem_regions[7];
-	struct jailhouse_irqchip irqchips[2];
+	struct jailhouse_irqchip irqchips[1];
 	struct jailhouse_pci_device pci_devices[1];
 } __attribute__((packed)) config = {
 	.cell = {
 		.signature = JAILHOUSE_CELL_DESC_SIGNATURE,
 		.revision = JAILHOUSE_CONFIG_REVISION,
 		.name = "FreeRTOS",
-		.flags = JAILHOUSE_CELL_PASSIVE_COMMREG | JAILHOUSE_CELL_AARCH32 ,
+		.flags = JAILHOUSE_CELL_PASSIVE_COMMREG | JAILHOUSE_CELL_AARCH32 |
+					JAILHOUSE_CELL_VIRTUAL_CONSOLE_PERMITTED ,
 
 		.cpu_set_size = sizeof(config.cpus),
 		.num_memory_regions = ARRAY_SIZE(config.mem_regions),
@@ -85,8 +86,8 @@ struct {
 			.virt_start = 0xfe215040,
 			.size = 0x40,
 			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
-				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_8 | JAILHOUSE_MEM_IO_32 |
-				 JAILHOUSE_MEM_ROOTSHARED,
+				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_8 | 
+				JAILHOUSE_MEM_IO_32 | JAILHOUSE_MEM_ROOTSHARED,
 		},
 		/* CCU (Hack)  {
 			.phys_start = 0x01c2006c,
@@ -105,17 +106,17 @@ struct {
 		},*/
 	},
 	.irqchips = {
-		/* GIC */ {
+		/* GIC  {
 			.address = 0xff841000,
 			.pin_base = 32,
-			/* AUX Interrupt for mini UART*/
+			 AUX Interrupt for mini UART
 			.pin_bitmap = {
 				0,
 				0,
 				1 << (125 - 96),
 				0,
 			},
-		},
+		},*/
 		/* GIC */ {
 			.address = 0xff841000,
 			.pin_base = 160,
