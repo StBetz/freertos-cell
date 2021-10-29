@@ -96,7 +96,7 @@
 #define AUX_MU_STAT_REG		0x64 //Information
 #define AUX_MU_BAUD_REG		0x68 //Baudrate
 
-#define UART_CLK   (500*1000*1000) //system_clock_freq
+#define UART_CLK   (250*1000*1000) 
 #define UART_BAUDRATE  115200
 
 /* Code is from linux kernel: drivers/tty/serial/8250/8250_early.c */
@@ -151,13 +151,16 @@ void mini_uart_irq_rx_enable(void)
 
 static int serial_ready(void) 
 {
+  uint32_t a;
    sio_fd_t uart_base = (void*)UART_BASE;
-   return  (mmio_read32(uart_base + AUX_MU_LSR_REG) & 0x00000010);
+    a = (mmio_read32(uart_base + AUX_MU_LSR_REG) & 0x00000020);
+    return a;
 }
 
-void mini_uart_putchar(char c)
+void mini_uart_putchar(uint32_t c)
 {
-  uint32_t *uart_tx = (void *)(UART_BASE + AUX_MU_IO_REG);
+  sio_fd_t uart_base = (void*)UART_BASE;
+  uint32_t *uart_tx = uart_base + AUX_MU_IO_REG;
   while(!serial_ready())
     ; /* Wait for empty transmit */
   mmio_write32(uart_tx, c);
@@ -198,3 +201,20 @@ int mini_uart_irq_getchar(void)
   }*/
   return *uart_rbr;
 }
+
+sio_fd_t serial_open(void){
+ return mini_uart_open();
+}
+
+void serial_irq_rx_enable(sio_fd_t fd){
+ mini_uart_irq_rx_enable();
+}
+
+void serial_putchar(sio_fd_t fd, uint32_t c){
+ mini_uart_putchar(c);
+}
+
+int serial_irq_getchar(sio_fd_t fd){
+ return mini_uart_irq_getchar();
+}
+
