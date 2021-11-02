@@ -31,13 +31,15 @@ void vApplicationIRQHandler( unsigned ulICCIAR );
 void __div0(void);
 int printf(const char *format, ...);
 
-/* {{{1 Global variables */
+/* Global variables              */
 static TaskHandle_t uart_task_handle;
 static SemaphoreHandle_t uart_mutex;
 sio_fd_t ser_dev;
-/* }}} */
 
-/* {{{1 FreeRTOS debug hooks */
+char rx[80];
+/*_____________________________*/
+
+/* FreeRTOS debug hooks       */
 
 void vAssertCalled( const char * pcFile, unsigned long ulLine )
 {
@@ -94,9 +96,19 @@ void __div0(void)
   ARM_SLEEP;
 }
 
-/* }}} */
+/*___________________________*/
 
-/* {{{1 Timer control */
+/* Failure prevent methodes */
+
+void resetFreeRTOS(void){
+ //Fail after new Start the Cell
+ //reset all values on default
+ //eg. Variable for running Scheduler
+}
+
+/*__________________________*/
+
+/* Timer control            */
 static int32_t timer_value_for_period;
 static unsigned timer_frq;
 
@@ -155,13 +167,13 @@ int timer_init(unsigned beats_per_second)
 
 	return 0;
 }
-/* }}} */
+/*___________________________*/
 
-/* {{{1 UART handling */
+/* UART handling            */
 static void serial_print(char *buf, int n)
 {
   buf[n] = 0;
-  UART_OUTPUT("TUA\t%d %s\n", n, buf);
+  UART_OUTPUT("Print: \t%d %s\n", n, buf);
 }
 
 /*static __attribute__((unused)) void hyp_putchar(int c)
@@ -178,9 +190,9 @@ static void serial_print(char *buf, int n)
 
 
 
-/* }}} */
+/*_________________________*/
 
-/* {{{1 Interrupt handling */
+/* Interrupt Handling	     */
 
 void vConfigureTickInterrupt( void )
 {
@@ -220,14 +232,6 @@ void vApplicationIRQHandler(unsigned int irqn)
   }
 }
 
-/* }}} */
-
-/*____________________________*/
-
-/*____________________________*/
-
-/* Interrupt Handling	      */
-
 /*____________________________*/
 
 
@@ -236,14 +240,31 @@ void vApplicationIRQHandler(unsigned int irqn)
 
 void uartTask(){
  while(1){
-  //char s[80]="Geht\n";
-  //int idx = 79;
-  mini_uart_putchar((uint32_t)'a');
-  //serial_print(s, idx);
-  //idx = 0;
+  char s[]="Output:\n";
+  int idx = sizeof(s);
+  serial_print(s, idx);
+  if(rx[0]!='\0'){
+    int i =sizeof(rx);
+    serial_print(rx,i);
+    rx[0]='\0';
+  }
+  idx = 0;
   vTaskDelay(1000/ portTICK_PERIOD_MS); 
  } 
 }
+
+ void read_uartTask(){
+   uint32_t help = -1;
+   while(1){
+     for(int idx=0; idx <= 79; idx++){
+     help = mini_uart_getchar();
+      if(help == 0x0000)idx =79;
+     rx[idx]=(char)help;
+   }
+      
+    vTaskDelay(10000/ portTICK_PERIOD_MS);
+   }
+ }
 /*____________________________*/
 
 /* Hardware init */
@@ -264,23 +285,34 @@ static void hardware_init(void){
 /*  main */
 void inmate_main(void)
 {
+ resetFreeRTOS();
  hardware_init();
  uart_mutex = xSemaphoreCreateMutex();
-//hyp_putchar('a');
+
+ xTaskCreate(
+   read_uartTask,
+  "UART read",
+  configMINIMAL_STACK_SIZE,
+  NULL,
+  configMAX_PRIORITIES-1,
+  &uart_task_handle);
 
  xTaskCreate(
 	uartTask,
 	"UART print",
 	configMINIMAL_STACK_SIZE,
 	NULL,
-	configMAX_PRIORITIES-1, /* The priority assigned to the task. */
+	configMAX_PRIORITIES-2, /* The priority assigned to the task. */
   &uart_task_handle );
 
 
 
  printf("vTaskStartScheduler goes active\n");
  vTaskStartScheduler();
-
+ printf("vTaskStartScheduler terminated: strange!!!\n");
+	while (1) {
+    ARM_SLEEP;
+  }
 
 
 }

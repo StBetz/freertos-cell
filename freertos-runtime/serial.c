@@ -143,9 +143,11 @@ sio_fd_t mini_uart_open(void)
 
 void mini_uart_irq_rx_enable(void)
 {
- sio_fd_t uart_base = (void*)UART_BASE;
- mmio_write32(uart_base+ AUX_IRQ , 1); /*IRQ on*/
- mmio_write32(uart_base+ AUX_MU_IER_REG , 2); /*receive Interrupt*/
+ sio_fd_t uart_base = (void*)UART_BASE; 
+ uint32_t irq_reg = mmio_read32(uart_base+ AUX_IRQ);
+ mmio_write32(uart_base+ AUX_IRQ , irq_reg | 1); /*IRQ on*/
+ irq_reg = mmio_read32(uart_base+ AUX_MU_IER_REG);
+ mmio_write32(uart_base+ AUX_MU_IER_REG , irq_reg | 2); /*receive Interrupt*/
   
 }
 
@@ -168,10 +170,11 @@ void mini_uart_putchar(uint32_t c)
 
 int mini_uart_getchar(void){
  sio_fd_t uart_base = (void*)UART_BASE;
- if(mmio_read32(uart_base  + AUX_MU_STAT_REG)& 0x000F000 ){  /*Receive FIFO fill Bit 19-16*/
-  return mmio_read32((void *)UART_BASE + AUX_MU_IO_REG);
+ if(mmio_read32(uart_base  + AUX_MU_LSR_REG)& 0x00000001 ){  /*Receive FIFO recieve with at least one Symbol */
+  return mmio_read32(uart_base + AUX_MU_IO_REG);
  }else{
-  return -1;
+  printf("recieve FIFO is empty \n");
+  return 0x000;
  }
 }
 
