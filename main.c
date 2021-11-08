@@ -5,6 +5,7 @@
 #include "string.h"
 #include "serial.h"
 #include "printf-stdarg.h"
+#include "gpio.h"
 
 /* Scheduler include files.   */
 #include "FreeRTOS.h"
@@ -205,13 +206,13 @@ void vConfigureTickInterrupt( void )
 }
 
 
-/*static void handle_uart_irq(void)
+static void handle_uart_irq(void)
 {
-  uint32_t v = serial_irq_getchar(ser_dev);
+  //uint32_t v = serial_irq_getchar(ser_dev);
   BaseType_t do_yield = pdFALSE;
-  xTaskNotifyFromISR(uart_task_handle, v, eSetValueWithOverwrite, &do_yield);
+  xTaskNotifyFromISR(uart_task_handle, NULL, eSetValueWithOverwrite, &do_yield); //NULL -> v
   portYIELD_FROM_ISR(do_yield);
-}*/
+}
 
 void vApplicationIRQHandler(unsigned int irqn)
 {
@@ -221,7 +222,7 @@ void vApplicationIRQHandler(unsigned int irqn)
       FreeRTOS_Tick_Handler();
       break;
     case UART_IRQ:
-      //handle_uart_irq();
+      handle_uart_irq();
       break;
     case 0x3ff:
       /* This irq should be ignored. It is no longer relevant */
@@ -238,7 +239,7 @@ void vApplicationIRQHandler(unsigned int irqn)
 
 /* FreeRTOS application tasks */
 
-void uartTask(){
+void uartTask_print(){
  while(1){
   char s[]="Output:\n";
   int idx = sizeof(s);
@@ -252,7 +253,7 @@ void uartTask(){
   vTaskDelay(1000/ portTICK_PERIOD_MS); 
  } 
 }
-
+/*
  void read_uartTask(){
    uint32_t help = -1;
    while(1){
@@ -264,23 +265,84 @@ void uartTask(){
       
     vTaskDelay(10000/ portTICK_PERIOD_MS);
    }
- }
+ }*/
+
+ static void uartTask(void *pvParameters)
+{
+  while(1){
+  vTaskSuspend(NULL);
+  printf("Interrupt found");
+  /*uint32_t c;
+  char s[80];
+  int idx = 0;
+  while(pdTRUE) {
+    if(pdTRUE == xTaskNotifyWait(0, 0, &c, pdMS_TO_TICKS(250))) {
+      
+      s[idx] = (char)c;
+      if('\r' == s[idx] || idx >= sizeof(s)-1) {
+        serial_print(s, idx);
+        idx = 0;
+      }
+      else
+        ++idx;
+    }
+    else if(idx) { Buffer not empty 
+      serial_print(s, idx);
+      idx = 0;
+    }
+  }*/
+  }
+}
+/*
+void nothingTask(void *pvParamteres){
+  while(1){
+
+
+  }
+}*/
 /*____________________________*/
 
 /* Hardware init */
+/*static void irq_enable(int m)
+{
+  volatile uint8_t *gicd = gic_v2_gicd_get_address() + GICD_ITARGETSR;
+  int n, offset;
+  printf("IRQ gicd=%p CPUID=%d\n", gicd, (int)gicd[0]);
+  n = m / 4;
+  offset = 4*n;
+  offset += m % 4;
+  printf("\tOrig GICD_ITARGETSR[%d]=%d\n",m, (int)gicd[offset]);
+  gicd[offset] |= gicd[0];
+  printf("\tNew  GICD_ITARGETSR[%d]=%d\n",m, (int)gicd[offset]);
+  gic_v2_irq_set_prio(m, portLOWEST_USABLE_INTERRUPT_PRIORITY);
+  gic_v2_irq_enable(m);
+  //ARM_SLEEP;
+}*/
+
 static void hardware_init(void){
   static unsigned long io_dev_map[2];
- 
+  //unsigned apsr;
  //ser_dev = serial_open();
  // io_dev_map[0] = (unsigned long)ser_dev;
  io_dev_map[1] = (unsigned long)gic_v2_init();
   vPortInstallFreeRTOSVectorTable();
+ 
+ 
+ //irq_enable(UART_IRQ);
+ serial_irq_rx_enable(UART_IRQ);
+ //gic_v2_irq_activate_exclusive_on_cpu(UART_IRQ,portLOWEST_USABLE_INTERRUPT_PRIORITY);
+ //asm volatile ( "mrs %0, apsr" : "=r" ( apsr ) );
+ // apsr &= 0x1f;
+  //printf("FreeRTOS inmate cpu-mode=%x\n", apsr);
   arm_read_sysreg(CNTFRQ, timer_frq);
   if(!timer_frq) {
     printf("Timer frequency is zero\n");
     ARM_SLEEP;
   }
 }
+
+
+
 /*___________________________ */
 /*  main */
 void inmate_main(void)
@@ -289,23 +351,37 @@ void inmate_main(void)
  hardware_init();
  uart_mutex = xSemaphoreCreateMutex();
 
- xTaskCreate(
+ /*xTaskCreate(
    read_uartTask,
   "UART read",
   configMINIMAL_STACK_SIZE,
   NULL,
   configMAX_PRIORITIES-1,
   &uart_task_handle);
-
+*/
  xTaskCreate(
-	uartTask,
+	uartTask_print,
 	"UART print",
 	configMINIMAL_STACK_SIZE,
 	NULL,
-	configMAX_PRIORITIES-2, /* The priority assigned to the task. */
-  &uart_task_handle );
+	configMAX_PRIORITIES-1,  
+  NULL );
 
 
+
+  xTaskCreate( uartTask, /* The function that implements the task. */
+      "uartstat", /* The text name assigned to the task - for debug only; not used by the kernel. */
+      configMINIMAL_STACK_SIZE, /* The size of the stack to allocate to the task. */
+      NULL,                                                            /* The parameter passed to the task */
+      configMAX_PRIORITIES-2, /* The priority assigned to the task. */
+      &uart_task_handle );
+
+  /*xTaskCreate(nothingTask,
+      "idle",
+      configMINIMAL_STACK_SIZE,
+      NULL,
+      configMAX_PRIORITIES-2,
+      NULL);   */ 
 
  printf("vTaskStartScheduler goes active\n");
  vTaskStartScheduler();

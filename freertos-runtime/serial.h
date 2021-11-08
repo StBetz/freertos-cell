@@ -75,7 +75,7 @@
 #define _UART_PRINTF_H_
 
 
-#define UART_IRQ 29+32  
+#define UART_IRQ 29+96 
 
 
 typedef void * sio_fd_t;

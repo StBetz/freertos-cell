@@ -144,11 +144,12 @@ sio_fd_t mini_uart_open(void)
 void mini_uart_irq_rx_enable(void)
 {
  sio_fd_t uart_base = (void*)UART_BASE; 
- uint32_t irq_reg = mmio_read32(uart_base+ AUX_IRQ);
- mmio_write32(uart_base+ AUX_IRQ , irq_reg | 1); /*IRQ on*/
- irq_reg = mmio_read32(uart_base+ AUX_MU_IER_REG);
- mmio_write32(uart_base+ AUX_MU_IER_REG , irq_reg | 2); /*receive Interrupt*/
-  
+ uint32_t irq_reg ;
+ mmio_write32(uart_base+ AUX_MU_IER_REG , 0x00000002 | mmio_read32(uart_base+AUX_MU_IER_REG)); /*receive Interrupt*/
+ irq_reg = mmio_read32(uart_base+ AUX_IRQ);
+  printf("Interrupt aktive: %x \n",irq_reg);
+  printf("Interrupt Reg: %x \n",mmio_read32(uart_base+AUX_MU_IER_REG));
+  printf("Einstellungen UART: %x \n",mmio_read32(uart_base+AUX_MU_CNTL_REG));
 }
 
 static int serial_ready(void) 
@@ -184,7 +185,7 @@ int mini_uart_irq_getchar(void)
   volatile uint32_t *uart_rbr = (void *)( UART_BASE + AUX_MU_IO_REG ); /* Receive buffer register */
   volatile uint32_t *uart_lsr = (void *)( UART_BASE + AUX_MU_LSR_REG );/* DATA status */
   volatile uint32_t *uart_usr = (void *)( UART_BASE + AUX_MU_STAT_REG );/* UART status register */
-  
+  printf("char ready to read");
  /* switch(iir_val) {
     case 0x7:  Busy detect indication 
       printf("USR=%x\n\r", *uart_usr);
