@@ -16,6 +16,7 @@
 /* Defines  		      */
 
 #define TIMER_IRQ 27  //virtuller Timer IRQ
+#define GPIO_IRQ 145
 #define BEATS_PER_SEC configTICK_RATE_HZ
 #define ARM_SLEEP asm volatile("wfi" : : : "memory")
 
@@ -34,10 +35,11 @@ int printf(const char *format, ...);
 
 /* Global variables              */
 static TaskHandle_t uart_task_handle;
+static TaskHandle_t gpio_task_handle;
 static SemaphoreHandle_t uart_mutex;
 sio_fd_t ser_dev;
-
 char rx[80];
+
 /*_____________________________*/
 
 /* FreeRTOS debug hooks       */
@@ -176,21 +178,6 @@ static void serial_print(char *buf, int n)
   buf[n] = 0;
   UART_OUTPUT("Print: \t%d %s\n", n, buf);
 }
-
-/*static __attribute__((unused)) void hyp_putchar(int c)
-{
-  asm volatile(
-      "mov r0, #8;"
-      "mov r1, %0;"
-      "hvc #0x0;"
-      :  outputs 
-      : "r" (c)  inputs 
-      : "r0", "r1" clobbered 
-      );
-}*/
-
-
-
 /*_________________________*/
 
 /* Interrupt Handling	     */
@@ -205,12 +192,19 @@ void vConfigureTickInterrupt( void )
   timer_init(BEATS_PER_SEC);
 }
 
+static void handle_gpio_irq()
+{
+  BaseType_t do_yield = pdFALSE;
+  xTaskNotifyFromISR(gpio_task_handle, NULL, eSetValueWithOverwrite, &do_yield); 
+  portYIELD_FROM_ISR(do_yield);
+}
+
 
 static void handle_uart_irq(void)
 {
-  //uint32_t v = serial_irq_getchar(ser_dev);
+  uint32_t v = serial_irq_getchar(ser_dev);
   BaseType_t do_yield = pdFALSE;
-  xTaskNotifyFromISR(uart_task_handle, NULL, eSetValueWithOverwrite, &do_yield); //NULL -> v
+  xTaskNotifyFromISR(uart_task_handle, v, eSetValueWithOverwrite, &do_yield); 
   portYIELD_FROM_ISR(do_yield);
 }
 
@@ -223,9 +217,11 @@ void vApplicationIRQHandler(unsigned int irqn)
       break;
     case UART_IRQ:
       handle_uart_irq();
+      //printf("Uart Interrupt \n");
       break;
-    case 0x3ff:
-      /* This irq should be ignored. It is no longer relevant */
+    case GPIO_IRQ:
+       handle_gpio_irq();
+       gpio_clearIRQStatus(21);
       break;
     default:
       printf("Spurious irq %d\n", irqn);
@@ -239,6 +235,7 @@ void vApplicationIRQHandler(unsigned int irqn)
 
 /* FreeRTOS application tasks */
 
+//Task print the Output form the buffer
 void uartTask_print(){
  while(1){
   char s[]="Output:\n";
@@ -267,12 +264,12 @@ void uartTask_print(){
    }
  }*/
 
+
+//Task read the Uart inpput via a Interrupt and print it on the console
  static void uartTask(void *pvParameters)
 {
   while(1){
-  vTaskSuspend(NULL);
-  printf("Interrupt found");
-  /*uint32_t c;
+  uint32_t c;
   char s[80];
   int idx = 0;
   while(pdTRUE) {
@@ -286,64 +283,64 @@ void uartTask_print(){
       else
         ++idx;
     }
-    else if(idx) { Buffer not empty 
+    else if(idx) { /*Buffer not empty */
       serial_print(s, idx);
       idx = 0;
     }
-  }*/
+  }
   }
 }
-/*
-void nothingTask(void *pvParamteres){
-  while(1){
 
 
-  }
-}*/
+static uint32_t mmio_read32(void *addr)
+{
+  return *((volatile uint32_t*)addr);
+}
+
+//Task print the status from the gpio pin
+void gpioTask(void *pvParameters)
+{
+ while(1){
+   if(pdTRUE == xTaskNotifyWait(0, 0, 0, pdMS_TO_TICKS(250))) {
+  int input = gpio_input(21); //vllt inpout in irq reinmachen, damit man den save hat (für beispiel unwichitg)
+  printf("Input GPIO: %x \n",input);
+  printf("Status GPIO flanke : %x \n",mmio_read32((void*)0xfe200000 + 0x40));
+  printf("Status GPIO flanke clear : %x \n",mmio_read32((void*)0xfe200000 + 0x40));
+  vTaskDelay(500/portTICK_PERIOD_MS);
+ }
+ }
+}
+
+
 /*____________________________*/
 
 /* Hardware init */
-/*static void irq_enable(int m)
-{
-  volatile uint8_t *gicd = gic_v2_gicd_get_address() + GICD_ITARGETSR;
-  int n, offset;
-  printf("IRQ gicd=%p CPUID=%d\n", gicd, (int)gicd[0]);
-  n = m / 4;
-  offset = 4*n;
-  offset += m % 4;
-  printf("\tOrig GICD_ITARGETSR[%d]=%d\n",m, (int)gicd[offset]);
-  gicd[offset] |= gicd[0];
-  printf("\tNew  GICD_ITARGETSR[%d]=%d\n",m, (int)gicd[offset]);
-  gic_v2_irq_set_prio(m, portLOWEST_USABLE_INTERRUPT_PRIORITY);
-  gic_v2_irq_enable(m);
-  //ARM_SLEEP;
-}*/
-
 static void hardware_init(void){
-  static unsigned long io_dev_map[2];
-  //unsigned apsr;
- //ser_dev = serial_open();
- // io_dev_map[0] = (unsigned long)ser_dev;
- io_dev_map[1] = (unsigned long)gic_v2_init();
-  vPortInstallFreeRTOSVectorTable();
+static unsigned long io_dev_map[2];
  
+io_dev_map[1] = (unsigned long)gic_v2_init();
+vPortInstallFreeRTOSVectorTable();
+
+//Mini Uart enable
+serial_irq_rx_enable(UART_IRQ);
+gic_v2_irq_enable(UART_IRQ);
  
- //irq_enable(UART_IRQ);
- serial_irq_rx_enable(UART_IRQ);
- //gic_v2_irq_activate_exclusive_on_cpu(UART_IRQ,portLOWEST_USABLE_INTERRUPT_PRIORITY);
- //asm volatile ( "mrs %0, apsr" : "=r" ( apsr ) );
- // apsr &= 0x1f;
-  //printf("FreeRTOS inmate cpu-mode=%x\n", apsr);
-  arm_read_sysreg(CNTFRQ, timer_frq);
-  if(!timer_frq) {
-    printf("Timer frequency is zero\n");
-    ARM_SLEEP;
-  }
+//GPIO enable 21 Resitor Pull up/Input
+gpio_pin_input_enable(21);
+gpio_resistor(21,1);
+gpio_pin_irq_rx_enable(21);
+gic_v2_irq_enable(GPIO_IRQ);
+gpio_clearIRQStatus(21);
+
+arm_read_sysreg(CNTFRQ, timer_frq);
+if(!timer_frq) {
+  printf("Timer frequency is zero\n");
+  ARM_SLEEP;
+ }
 }
 
-
-
 /*___________________________ */
+
 /*  main */
 void inmate_main(void)
 {
@@ -360,28 +357,29 @@ void inmate_main(void)
   &uart_task_handle);
 */
  xTaskCreate(
-	uartTask_print,
-	"UART print",
-	configMINIMAL_STACK_SIZE,
-	NULL,
-	configMAX_PRIORITIES-1,  
-  NULL );
+	 uartTask_print,
+	 "UART print",
+	 configMINIMAL_STACK_SIZE,
+	 NULL,
+	 configMAX_PRIORITIES-2,  
+   NULL );
 
-
+  xTaskCreate(
+    gpioTask,
+    "GPIO get Input",
+    configMINIMAL_STACK_SIZE,
+	  NULL,
+    configMAX_PRIORITIES-1,  
+    &gpio_task_handle);
 
   xTaskCreate( uartTask, /* The function that implements the task. */
-      "uartstat", /* The text name assigned to the task - for debug only; not used by the kernel. */
-      configMINIMAL_STACK_SIZE, /* The size of the stack to allocate to the task. */
-      NULL,                                                            /* The parameter passed to the task */
-      configMAX_PRIORITIES-2, /* The priority assigned to the task. */
-      &uart_task_handle );
+    "uartstat", /* The text name assigned to the task - for debug only; not used by the kernel. */
+    configMINIMAL_STACK_SIZE, /* The size of the stack to allocate to the task. */
+    NULL,                                                            /* The parameter passed to the task */
+    configMAX_PRIORITIES-1, /* The priority assigned to the task. */
+    &uart_task_handle );
 
-  /*xTaskCreate(nothingTask,
-      "idle",
-      configMINIMAL_STACK_SIZE,
-      NULL,
-      configMAX_PRIORITIES-2,
-      NULL);   */ 
+  
 
  printf("vTaskStartScheduler goes active\n");
  vTaskStartScheduler();

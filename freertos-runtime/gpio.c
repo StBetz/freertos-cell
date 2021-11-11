@@ -56,6 +56,8 @@ static void mmio_write32(void *addr, uint32_t val)
   *((volatile uint32_t*)addr) = val;
 }
 
+
+/*GPIO number on output*/
 int gpio_pin_output_enable(uint32_t number){
  uint32_t reg,offset,mask;
  uint32_t help_reg;
@@ -69,6 +71,7 @@ int gpio_pin_output_enable(uint32_t number){
  return NULL;                                               //Fehlerabfangen möglich,vllt falls bereits in ander enutzung oder ähnliches
 }
 
+/*GPIO number on input*/
 int gpio_pin_input_enable(uint32_t number){
 uint32_t reg,offset,mask;
  uint32_t help_reg;
@@ -79,8 +82,10 @@ uint32_t reg,offset,mask;
  help_reg=mmio_read32(gpio_base + reg*register_size);
  help_reg =(help_reg & ~mask ); 
  mmio_write32(gpio_base+reg*register_size, help_reg );
+ printf("Input enable: %x", number);
  return NULL;
 }
+
 /* Set GpioPins to Input,that is the reset status  */
 int gpio_pin_disable(uint32_t number){
 uint32_t reg,offset,mask;
@@ -95,26 +100,26 @@ uint32_t reg,offset,mask;
  return NULL;
 }
 
-/*asynchronous falling and rising edges detect activate*/
+/* falling and rising edges detect activate*/
 void gpio_pin_irq_rx_enable(uint32_t number){ 
  uint32_t offset,reg;
  sio_fd_t gpio_base = (void*)GPIO_BASE;
 
  offset = number%32;
  reg = number/32;  
- mmio_write32(gpio_base + GPAREN0 + reg*register_size, mmio_read32(gpio_base + GPAREN0 + reg*register_size) | 1 << offset );
- mmio_write32(gpio_base + GPAFEN0 + reg*register_size, mmio_read32(gpio_base + GPAFEN0 + reg*register_size) | 1 << offset );
+ mmio_write32(gpio_base + GPREN0 + reg*register_size, mmio_read32(gpio_base + GPREN0 + reg*register_size) | 1 << offset );
+ mmio_write32(gpio_base + GPFEN0 + reg*register_size, mmio_read32(gpio_base + GPFEN0 + reg*register_size) | 1 << offset );
 }
 
-
+/*disable edge event   */
 void gpio_pin_irq_rx_disanable(uint32_t number){
  uint32_t offset,reg;
  sio_fd_t gpio_base = (void*)GPIO_BASE;
 
  offset = number%32;
  reg = number/32;  
- mmio_write32(gpio_base + GPAREN0 + reg*register_size, mmio_read32(gpio_base + GPAREN0 + reg*register_size) & ~(1 << offset) );
- mmio_write32(gpio_base + GPAFEN0 + reg*register_size, mmio_read32(gpio_base + GPAFEN0 + reg*register_size) & ~(1 << offset) );
+ mmio_write32(gpio_base + GPREN0 + reg*register_size, mmio_read32(gpio_base + GPREN0 + reg*register_size) & ~(1 << offset) );
+ mmio_write32(gpio_base + GPFEN0 + reg*register_size, mmio_read32(gpio_base + GPFEN0 + reg*register_size) & ~(1 << offset) );
 }
 
 
@@ -133,6 +138,8 @@ void gpio_output(uint32_t number, uint32_t state){
   }
 
 }
+
+/*Get the GPIO INPUT*/
 int gpio_input(uint32_t number){
  uint32_t state,offset,reg;
  sio_fd_t gpio_base = (void*)GPIO_BASE;
@@ -143,7 +150,20 @@ int gpio_input(uint32_t number){
  return state;
 }
 
-/* Find the right Gpio and return the number from the Gpio pin   */
+int bit_count(uint32_t reg){
+  int count=0;
+ while(reg){
+  if(0x00000001 & reg){
+    count++;
+  }
+  reg = reg >> 1;
+ }
+ return count;
+}
+
+
+
+/* Find the right Gpio from abank and return the number from the Gpio pin   */
 int gpio_irq_input_number(uint32_t bank_number){
  uint32_t reg,reg2;
  sio_fd_t gpio_base = (void*)GPIO_BASE;
@@ -153,7 +173,7 @@ int gpio_irq_input_number(uint32_t bank_number){
  case 0:
      reg =mmio_read32(gpio_base + GPEDS0);
      if(reg &= 0x0FFFFFFF){
-         if(__builtin_popcount(reg)==1){
+         if( bit_count(reg) ==1){
              while(reg){
                  reg = reg >> 1;
                  num++;
@@ -171,7 +191,7 @@ int gpio_irq_input_number(uint32_t bank_number){
      reg =mmio_read32(gpio_base + GPEDS0);
      reg2 =mmio_read32(gpio_base + GPEDS1);
      if((reg &= 0xF0000000) || (reg2 &= 0x00003FFF)){
-      if((__builtin_popcount(reg) | __builtin_popcount(reg2)) == 1 && __builtin_popcount(reg) ^  __builtin_popcount(reg2)){
+      if((bit_count(reg) | bit_count(reg2)) == 1 && bit_count(reg) ^  bit_count(reg2)){
          if(reg){
              reg =reg >> 28;
               while(reg){
@@ -192,7 +212,7 @@ int gpio_irq_input_number(uint32_t bank_number){
  case 2:
      reg =mmio_read32(gpio_base + GPEDS1);
      if(reg &= 0x03FFC000){
-         if(__builtin_popcount(reg)==1){
+         if(bit_count(reg)==1){
              reg = reg >> 14 ;
              while (reg)
              {
@@ -210,4 +230,28 @@ int gpio_irq_input_number(uint32_t bank_number){
      break;
  }
  return -1; //fail
+}
+
+/*Clear Interrupt event bit*/
+void gpio_clearIRQStatus(uint32_t number){
+ uint32_t reg,offset;
+ sio_fd_t gpio_base = (void*)GPIO_BASE;
+ reg=number/32;
+ offset=number%32;
+ mmio_write32(gpio_base + GPEDS0 + reg*register_size,1<< offset);
+}
+
+/*Resistor adjust:pull up =1 other , pull down =0*/
+void gpio_resistor(uint32_t number, uint32_t up_down){
+ uint32_t offset,reg,mask;
+ sio_fd_t gpio_base = (void*)GPIO_BASE;
+ offset = number%16;
+ reg = number/16; 
+ mask = 3 << offset*2;
+ if(up_down){
+  mmio_write32(gpio_base + GPIO_PUP_PDN_CNTRL_REG0 + reg*register_size,((mmio_read32(gpio_base + GPIO_PUP_PDN_CNTRL_REG0 + reg*register_size) & ~mask ) | (01 << 2*offset & mask)));
+ }else{
+  mmio_write32(gpio_base + GPIO_PUP_PDN_CNTRL_REG0 + reg*register_size,((mmio_read32(gpio_base + GPIO_PUP_PDN_CNTRL_REG0 + reg*register_size) & ~mask ) | (2 << 2*offset & mask)));
+ }
+ printf("Widerstand enable");
 }

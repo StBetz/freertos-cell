@@ -10,16 +10,15 @@
 struct {
 	struct jailhouse_cell_desc cell;
 	__u64 cpus[1];
-	struct jailhouse_memory mem_regions[7];
-	struct jailhouse_irqchip irqchips[1];
+	struct jailhouse_memory mem_regions[8];
+	struct jailhouse_irqchip irqchips[2];
 	struct jailhouse_pci_device pci_devices[1];
 } __attribute__((packed)) config = {
 	.cell = {
 		.signature = JAILHOUSE_CELL_DESC_SIGNATURE,
 		.revision = JAILHOUSE_CONFIG_REVISION,
 		.name = "FreeRTOS",
-		.flags = JAILHOUSE_CELL_PASSIVE_COMMREG | JAILHOUSE_CELL_AARCH32 |
-					JAILHOUSE_CELL_VIRTUAL_CONSOLE_PERMITTED ,
+		.flags = JAILHOUSE_CELL_PASSIVE_COMMREG | JAILHOUSE_CELL_AARCH32,
 
 		.cpu_set_size = sizeof(config.cpus),
 		.num_memory_regions = ARRAY_SIZE(config.mem_regions),
@@ -82,20 +81,20 @@ struct {
 				JAILHOUSE_MEM_EXECUTE | JAILHOUSE_MEM_LOADABLE,
 		},
 		/* UART 1 */ {
-			.phys_start = 0xfe215040,
-			.virt_start = 0xfe215040,
-			.size = 0x40,
+			.phys_start = 0xfe215000,
+			.virt_start = 0xfe215000,
+			.size = 0xE0,
 			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
 				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_8 | 
 				JAILHOUSE_MEM_IO_32 | JAILHOUSE_MEM_ROOTSHARED,
 		},
-		/* CCU (Hack)  {
-			.phys_start = 0x01c2006c,
-			.virt_start = 0x01c2006c,
-			.size = 0x4,
+		/* GPIO Register all */ {
+			.phys_start = 0xfe200000,
+			.virt_start = 0xfe200000,
+			.size = 0xFF,
 			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE | 
-				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_32 | JAILHOUSE_MEM_ROOTSHARED,
-		},
+				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_8 | JAILHOUSE_MEM_IO_32 | JAILHOUSE_MEM_ROOTSHARED,
+		},/*
 #define PIO_P7_REG (0x01c20800 + 7*0x24 + 0x0c)
 		 PIO port 7: blinking LED  {
 			.phys_start = PIO_P7_REG,
@@ -106,17 +105,17 @@ struct {
 		},*/
 	},
 	.irqchips = {
-		/* GIC  {
+		/* GIC */ {
 			.address = 0xff841000,
 			.pin_base = 32,
-			 AUX Interrupt for mini UART
+			 /*AUX Interrupt for mini UART / Interrupt for GPIO bank 0*/
 			.pin_bitmap = {
 				0,
 				0,
 				1 << (125 - 96),
-				0,
+				1 << (146 - 128),
 			},
-		},*/
+		},
 		/* GIC */ {
 			.address = 0xff841000,
 			.pin_base = 160,
