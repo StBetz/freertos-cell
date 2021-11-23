@@ -67,9 +67,7 @@
 
     1 tab == 4 spaces!
 
-    Author:
-      Dr. Johann Pfefferl <johann.pfefferl@siemens.com>
-      Siemens AG
+    This main activate and test the GPIO and UART IRQ 
 }}} */
 
 #include <stdarg.h>
@@ -147,13 +145,13 @@ void mini_uart_irq_rx_enable(void)
  uint32_t irq_reg ;
  mmio_write32(uart_base + AUX_MU_IIR_REG , 2); /* clear receive FIFO (second bit, Respi Doku is wrong) */
  mmio_write32(uart_base+ AUX_MU_IER_REG , 1 ); /*receive Interrupt*/
- irq_reg = mmio_read32(uart_base+ AUX_IRQ);
+ //irq_reg = mmio_read32(uart_base+ AUX_IRQ);
    
-  printf("Interrupt aktive: %x \n",irq_reg);
+ /* printf("Interrupt aktive: %x \n",irq_reg);
   printf("AUX Enable: %x \n",mmio_read32(uart_base+ AUX_IRQ+ 0x04));
   for(int i =0x40;i<=0x74;i= i + 0x04){
     printf("REgister %x : %x \n",i,mmio_read32(uart_base+i));
-  }
+  }*/
 }
 
 static int serial_ready(void) 
@@ -168,8 +166,8 @@ void mini_uart_putchar(uint32_t c)
 {
   sio_fd_t uart_base = (void*)UART_BASE;
   uint32_t *uart_tx = uart_base + AUX_MU_IO_REG;
-  while(!serial_ready())
-    ; /* Wait for empty transmit */
+  while(!serial_ready());
+   /* Wait for empty transmit */
   mmio_write32(uart_tx, c);
 }
 
@@ -185,7 +183,6 @@ int mini_uart_getchar(void){
 
 int mini_uart_irq_getchar(void)
 {
-  uint32_t irq_reg ;
   sio_fd_t uart_base = (void*)UART_BASE;
   return mmio_read32(uart_base + AUX_MU_IO_REG);
 }
