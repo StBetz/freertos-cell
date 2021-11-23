@@ -10,7 +10,7 @@
 struct {
 	struct jailhouse_cell_desc cell;
 	__u64 cpus[1];
-	struct jailhouse_memory mem_regions[8];
+	struct jailhouse_memory mem_regions[9];
 	struct jailhouse_irqchip irqchips[2];
 	struct jailhouse_pci_device pci_devices[1];
 } __attribute__((packed)) config = {
@@ -25,7 +25,7 @@ struct {
 		.num_irqchips = ARRAY_SIZE(config.irqchips),
 		.num_pci_devices = ARRAY_SIZE(config.pci_devices),
 
-		.vpci_irq_base = 186-32,
+		.vpci_irq_base = 184-32,
 
 		.console = {
 			.address = 0xfe215040,
@@ -94,15 +94,13 @@ struct {
 			.size = 0xFF,
 			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE | 
 				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_8 | JAILHOUSE_MEM_IO_32 | JAILHOUSE_MEM_ROOTSHARED,
-		},/*
-#define PIO_P7_REG (0x01c20800 + 7*0x24 + 0x0c)
-		 PIO port 7: blinking LED  {
-			.phys_start = PIO_P7_REG,
-			.virt_start = PIO_P7_REG,
-			.size = 0x8,
+		},
+		/* communication region */ {
+			.virt_start = 0x80000000,
+			.size = 0x00001000,
 			.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
-				JAILHOUSE_MEM_IO | JAILHOUSE_MEM_IO_32,
-		},*/
+				JAILHOUSE_MEM_COMM_REGION,
+		},
 	},
 	.irqchips = {
 		/* GIC */ {
@@ -121,7 +119,7 @@ struct {
 			.pin_base = 160,
 			/* Interrupt for Shared Memory */
 			.pin_bitmap = {
-				 1<<(186-160),
+				 1<<(184-160),
 				 0,
 				 0,
 				 0
@@ -135,7 +133,7 @@ struct {
 			.bdf = 0 << 3,
 			.bar_mask = JAILHOUSE_IVSHMEM_BAR_MASK_INTX,
 			.shmem_regions_start = 0,
-			.shmem_dev_id = 3,
+			.shmem_dev_id = 1,
 			.shmem_peers = 3,
 			.shmem_protocol = JAILHOUSE_SHMEM_PROTO_UNDEFINED,
 		},

@@ -6,7 +6,6 @@
 #include "serial.h"
 #include "printf-stdarg.h"
 #include "gpio.h"
-#include "ivshmem.h"
 
 /* Scheduler include files.   */
 #include "FreeRTOS.h"
@@ -18,7 +17,6 @@
 
 #define TIMER_IRQ 27  //virtuller Timer IRQ
 #define GPIO_IRQ 145
-#define Ivshmem_IRQ 184
 #define BEATS_PER_SEC configTICK_RATE_HZ
 #define ARM_SLEEP asm volatile("wfi" : : : "memory")
 
@@ -37,8 +35,7 @@ int printf(const char *format, ...);
 
 /* Global variables              */
 static TaskHandle_t uart_task_handle;
-static TaskHandle_t ivshmem_task_handle;
-static struct ivshmem_dev_data dev;
+static TaskHandle_t gpio_task_handle;
 static SemaphoreHandle_t uart_mutex;
 sio_fd_t ser_dev;
 char rx[80];
@@ -195,6 +192,13 @@ void vConfigureTickInterrupt( void )
   timer_init(BEATS_PER_SEC);
 }
 
+static void handle_gpio_irq()
+{
+  BaseType_t do_yield = pdFALSE;
+  xTaskNotifyFromISR(gpio_task_handle, NULL, eSetValueWithOverwrite, &do_yield); 
+  portYIELD_FROM_ISR(do_yield);
+}
+
 
 static void handle_uart_irq(void)
 {
@@ -202,14 +206,6 @@ static void handle_uart_irq(void)
   BaseType_t do_yield = pdFALSE;
   xTaskNotifyFromISR(uart_task_handle, v, eSetValueWithOverwrite, &do_yield); 
   portYIELD_FROM_ISR(do_yield);
-}
-
-static void handle_ivshmem_irq(void)
-{
-  uint32_t v = ivshmem_irq(&dev);
-  BaseType_t do_yield = pdFALSE;
-  xTaskNotifyFromISR(ivshmem_task_handle, v, eSetValueWithOverwrite, &do_yield); 
-  portYIELD_FROM_ISR(do_yield); 
 }
 
 void vApplicationIRQHandler(unsigned int irqn)
@@ -224,15 +220,11 @@ void vApplicationIRQHandler(unsigned int irqn)
       //printf("Uart Interrupt \n");
       break;
     case GPIO_IRQ:
-       //handle_gpio_irq();
+       handle_gpio_irq();
        gpio_clearIRQStatus(21);
       break;
-    case Ivshmem_IRQ:
-     handle_ivshmem_irq();
-     printf("PCI Interrupt");
-     break;
     default:
-      printf("Spurious irq %u \n", irqn);
+      printf("Spurious irq %d\n", irqn);
       break;
   }
 }
@@ -244,7 +236,7 @@ void vApplicationIRQHandler(unsigned int irqn)
 /* FreeRTOS application tasks */
 
 //Task print the Output form the buffer
-void uartTask_print(){	
+void uartTask_print(){
  while(1){
   char s[]="Output:\n";
   int idx = sizeof(s);
@@ -272,32 +264,6 @@ void uartTask_print(){
    }
  }*/
 
-//Task send periodically Interrupts to the Root cell 
-void sendIvshmemIRQ(void* pvParamter){
- while(1){
-  dev.out_section[5]++;
-  ivshmem_write_state(&dev,UPDATED);
-  ivshmem_send_irq(&dev,PCI_LINUX_ROOT);
-  vTaskDelay(3000/ portTICK_PERIOD_MS); 
- }
-
-}
-
-//Task get the Ivshmem status and read the memory
-static void readIvshmem(void* pvParamter){
- while(1){
-   int status=0;
-    while(pdTRUE) {
-    if(pdTRUE == xTaskNotifyWait(0, 0, &status, pdMS_TO_TICKS(250))) {
-      //here
-      
-    }
-    else {
-     //here
-    }
-  }
- }
-}
 
 //Task read the Uart inpput via a Interrupt and print it on the console
  static void uartTask(void *pvParameters)
@@ -325,8 +291,28 @@ static void readIvshmem(void* pvParamter){
   }
 }
 
-/*____________________________*/
 
+static uint32_t mmio_read32(void *addr)
+{
+  return *((volatile uint32_t*)addr);
+}
+
+//Task print the status from the gpio pin
+void gpioTask(void *pvParameters)
+{
+ while(1){
+   if(pdTRUE == xTaskNotifyWait(0, 0, 0, pdMS_TO_TICKS(250))) {
+  int input = gpio_input(21); //vllt inpout in irq reinmachen, damit man den save hat (für beispiel unwichitg)
+  printf("Input GPIO: %x \n",input);
+  printf("Status GPIO flanke : %x \n",mmio_read32((void*)0xfe200000 + 0x40));
+  printf("Status GPIO flanke clear : %x \n",mmio_read32((void*)0xfe200000 + 0x40));
+  vTaskDelay(500/portTICK_PERIOD_MS);
+ }
+ }
+}
+
+
+/*____________________________*/
 
 /* Hardware init */
 static void hardware_init(void){
@@ -338,20 +324,13 @@ vPortInstallFreeRTOSVectorTable();
 //Mini Uart enable
 serial_irq_rx_enable(UART_IRQ);
 gic_v2_irq_enable(UART_IRQ);
-
-//Shared Memory enable  
-ivshmem_init_device(&dev);
-gic_v2_irq_enable(Ivshmem_IRQ);//IRQ enable
-ivshmem_irq_enable(&dev);
-print_shmem(&dev);
-
-
+ 
 //GPIO enable 21 Resitor Pull up/Input
-//gpio_pin_input_enable(21);
-//gpio_resistor(21,1);
-//gpio_pin_irq_rx_enable(21);
-//gic_v2_irq_enable(GPIO_IRQ);
-//gpio_clearIRQStatus(21);
+gpio_pin_input_enable(21);
+gpio_resistor(21,1);
+gpio_pin_irq_rx_enable(21);
+gic_v2_irq_enable(GPIO_IRQ);
+gpio_clearIRQStatus(21);
 
 arm_read_sysreg(CNTFRQ, timer_frq);
 if(!timer_frq) {
@@ -385,7 +364,14 @@ void inmate_main(void)
 	 configMAX_PRIORITIES-2,  
    NULL );
 
-  
+  xTaskCreate(
+    gpioTask,
+    "GPIO get Input",
+    configMINIMAL_STACK_SIZE,
+	  NULL,
+    configMAX_PRIORITIES-1,  
+    &gpio_task_handle);
+
   xTaskCreate( uartTask, /* The function that implements the task. */
     "uartstat", /* The text name assigned to the task - for debug only; not used by the kernel. */
     configMINIMAL_STACK_SIZE, /* The size of the stack to allocate to the task. */
@@ -393,21 +379,6 @@ void inmate_main(void)
     configMAX_PRIORITIES-1, /* The priority assigned to the task. */
     &uart_task_handle );
 
- xTaskCreate(
-   sendIvshmemIRQ,
-   "IRQ send to Root",
-   configMINIMAL_STACK_SIZE,
-	 NULL,
-	 configMAX_PRIORITIES-2,  
-   NULL );
-
- xTaskCreate(
-  readIvshmem,
-  "read sharedMM",
-  configMINIMAL_STACK_SIZE,
-  NULL,
-  configMAX_PRIORITIES-1,
-  &ivshmem_task_handle);
   
 
  printf("vTaskStartScheduler goes active\n");

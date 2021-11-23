@@ -34,6 +34,7 @@ FREERTOS_OBJS = freertos/Source/queue.o \
 FREERTOS_RUNTIME_OBJS = freertos-runtime/string.o \
 	freertos-runtime/serial.o \
 	freertos-runtime/gpio.o \
+	freertos-runtime/ivshmem.o\
 	freertos-runtime/printf-stdarg.o \
 	freertos-runtime/lib1funcs.o 
 	
@@ -51,7 +52,7 @@ all: $(EXE_STEM).bin
 
 .S.o:
 	$(CC) $(CFLAGS) $< -c -o $@
-#$(CC) $(CFLAGS) -Wl,-Map=output.map 	
+ 	
 
 DEPS := $(OBJS:.o=.d) $(RUNTIME_OBJS:.o=.d)
 	
